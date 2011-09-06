@@ -107,12 +107,10 @@ module Capybara
       # @return [Capybara::Element]                       The found elements
       #
       def all(*args)
-        args, options = extract_normalized_options(args)
-
         selector = Capybara::Selector.normalize(*args)
         selector.xpaths.
           map    { |path| find_in_base(selector, path) }.flatten.
-          select { |node| matches_options(node, options) }
+          select { |node| selector.filter(node) }
       end
 
       ##
@@ -129,13 +127,12 @@ module Capybara
       # @return Capybara::Element                         The found element
       #
       def first(*args)
-        args, options  = extract_normalized_options(args)
         found_elements = []
+        selector       = Capybara::Selector.normalize(*args)
 
-        selector = Capybara::Selector.normalize(*args)
         selector.xpaths.each do |path|
           find_in_base(selector, path).each do |node|
-            if matches_options(node, options)
+            if selector.filter(node)
               found_elements << node
               return found_elements.last if not Capybara.prefer_visible_elements or node.visible?
             end
@@ -147,10 +144,10 @@ module Capybara
     protected
 
       def raise_find_error(*args)
-        args, options = extract_normalized_options(args)
-        normalized    = Capybara::Selector.normalize(*args)
-        message       = options[:message] || "Unable to find #{normalized.name} #{normalized.locator.inspect}"
-        message       = normalized.failure_message.call(self, normalized) if normalized.failure_message
+        options    = if args.last.is_a?(Hash) then args.last else {} end
+        normalized = Capybara::Selector.normalize(*args)
+        message    = options[:message] || "Unable to find #{normalized.name} #{normalized.locator.inspect}"
+        message    = normalized.failure_message.call(self, normalized) if normalized.failure_message
 
         raise Capybara::ElementNotFound, message
       end
@@ -161,38 +158,6 @@ module Capybara
         end
       end
 
-      def extract_normalized_options(args)
-        options = if args.last.is_a?(Hash) then args.pop.dup else {} end
-
-        if text = options[:text]
-          options[:text] = Regexp.escape(text) unless text.kind_of?(Regexp)
-        end
-
-        if !options.has_key?(:visible)
-          options[:visible] = Capybara.ignore_hidden_elements
-        end
-
-        if selected = options[:selected]
-          options[:selected] = [selected].flatten
-        end
-
-        [args.push(options), options]
-      end
-
-      def matches_options(node, options)
-        return false if options[:text]      and not node.text.match(options[:text])
-        return false if options[:visible]   and not node.visible?
-        return false if options[:with]      and not node.value == options[:with]
-        return false if options[:checked]   and not node.checked?
-        return false if options[:unchecked] and node.checked?
-        return false if options[:selected]  and not has_selected_options?(node, options[:selected])
-        true
-      end
-
-      def has_selected_options?(node, expected)
-        actual = node.all(:xpath, './/option').select { |option| option.selected? }.map { |option| option.text }
-        (expected - actual).empty?
-      end
     end
   end
 end
