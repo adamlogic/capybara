@@ -16,11 +16,7 @@ module Capybara
       end
 
       def failure_message_for_should
-        if normalized.failure_message
-          normalized.failure_message.call(@actual, normalized)
-        else
-          "expected #{selector_name} to return something"
-        end
+        normalized.failure_message(@actual)
       end
 
       def failure_message_for_should_not
