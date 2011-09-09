@@ -214,7 +214,7 @@ describe Capybara::RSpecMatchers do
         it "fails if has_no_css? returns false" do
           expect do
             page.should_not have_selector(:css, 'h1', :text => 'test')
-          end.to raise_error(%r(expected css "h1" with text "test" not to return anything))
+          end.to raise_error(%r(expected css "h1" not to return anything))
         end
       end
     end

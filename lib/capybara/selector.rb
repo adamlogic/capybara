@@ -30,41 +30,34 @@ module Capybara
     end
 
     class Base
-      attr_accessor :locator, :options, :xpath_options, :property_options
+      attr_accessor :locator, :options
 
       class << self
         attr_accessor :name
-      end
 
-      def self.inherited(klass)
-        Capybara::Selector.add(klass)
-      end
+        def inherited(klass)
+          Capybara::Selector.add(klass)
+        end
 
-      def self.match?(locator)
-        false
+        def match?(locator)
+          false
+        end
       end
 
       def initialize(locator, options = {})
         self.locator = locator
         self.options = options
-        self.xpath_options, self.property_options = split_options(options)
       end
 
       def xpath
       end
 
-      def failure_message(node)
-        "Unable to find #{self.class.name} #{locator.inspect}"
+      def filter(node)
+        true
       end
 
-      def filter(node)
-        return false if property_options[:text]      and not node.text.match(property_options[:text])
-        return false if property_options[:visible]   and not node.visible?
-        return false if property_options[:with]      and not node.value == property_options[:with]
-        return false if property_options[:checked]   and not node.checked?
-        return false if property_options[:unchecked] and node.checked?
-        return false if property_options[:selected]  and not has_selected_options?(node, property_options[:selected])
-        true
+      def failure_message(node)
+        "Unable to find #{name} #{locator.inspect}"
       end
 
       def xpaths
@@ -79,30 +72,89 @@ module Capybara
       def name
         self.class.name
       end
+    end
+
+    module FilterByText
+      def initialize(locator, options = {})
+        @property_options ||= {}
+        text = options.delete(:text)
+        @property_options[:text] = if text.kind_of?(String) then Regexp.escape(text) else text end
+        super
+      end
+
+      def filter(node)
+        return false if @property_options[:text] and not node.text.match(@property_options[:text])
+        super
+      end
+    end
+
+    module FilterByVisibility
+      def initialize(locator, options = {})
+        @property_options ||= {}
+        visible = options.delete(:visible)
+        @property_options[:visible] = if visible.nil? then Capybara.ignore_hidden_elements else visible end
+        super
+      end
+
+      def filter(node)
+        return false if @property_options[:visible] and not node.visible?
+        super
+      end
+    end
+
+    module FilterByValue
+      def initialize(locator, options = {})
+        @property_options ||= {}
+        @property_options[:with] = options.delete(:with)
+        super
+      end
+
+      def filter(node)
+        return false if @property_options[:with] and not node.value == @property_options[:with]
+        super
+      end
+    end
+
+    module FilterByChecked
+      def initialize(locator, options = {})
+        @property_options ||= {}
+        @property_options[:checked] = options.delete(:checked)
+        super
+      end
+
+      def filter(node)
+        return false if @property_options[:checked] and not node.checked?
+        super
+      end
+    end
+
+    module FilterByUnchecked
+      def initialize(locator, options = {})
+        @property_options ||= {}
+        @property_options[:unchecked] = options.delete(:unchecked)
+        super
+      end
+
+      def filter(node)
+        return false if @property_options[:unchecked] and node.checked?
+        super
+      end
+    end
+
+    module FilterBySelected
+      def initialize(locator, options = {})
+        @property_options ||= {}
+        selected = options.delete(:selected)
+        @property_options[:selected] = [selected].flatten unless selected.nil?
+        super
+      end
+
+      def filter(node)
+        return false if @property_options[:selected] and not has_selected_options?(node, @property_options[:selected])
+        super
+      end
 
       private
-
-      def split_options(options)
-        xpath_options    = options.dup
-        property_options = [:text, :visible, :with, :checked, :unchecked, :selected].inject({}) do |opts, key|
-          opts[key] = xpath_options.delete(key) if xpath_options.has_key?(key)
-          opts
-        end
-
-        if text = property_options[:text]
-          property_options[:text] = Regexp.escape(text) unless text.kind_of?(Regexp)
-        end
-
-        if !property_options.has_key?(:visible)
-          property_options[:visible] = Capybara.ignore_hidden_elements
-        end
-
-        if selected = property_options[:selected]
-          property_options[:selected] = [selected].flatten
-        end
-
-        [ xpath_options, property_options ]
-      end
 
       def has_selected_options?(node, expected)
         actual = node.all(:xpath, './/option').select { |option| option.selected? }.map { |option| option.text }
@@ -111,6 +163,9 @@ module Capybara
     end
 
     class XPathSelector < Base
+      include FilterByVisibility
+      include FilterByText
+
       self.name = :xpath
 
       def xpath
@@ -119,6 +174,9 @@ module Capybara
     end
 
     class CSSSelector < Base
+      include FilterByVisibility
+      include FilterByText
+
       self.name = :css
 
       def xpath
@@ -127,6 +185,7 @@ module Capybara
     end
 
     class IDSelector < Base
+      include FilterByVisibility
       self.name = :id
 
       def self.match?(value)
@@ -139,6 +198,12 @@ module Capybara
     end
 
     class FieldSelector < Base
+      include FilterByVisibility
+      include FilterByValue
+      include FilterByChecked
+      include FilterByUnchecked
+      include FilterBySelected
+
       self.name = :field
 
       def xpath
@@ -147,6 +212,9 @@ module Capybara
     end
 
     class FieldsetSelector < Base
+      include FilterByVisibility
+      include FilterByText
+
       self.name = :fieldset
 
       def xpath
@@ -155,6 +223,10 @@ module Capybara
     end
 
     class LinkOrButtonSelector < Base
+      include FilterByVisibility
+      include FilterByText
+      include FilterByValue
+
       self.name = :link_or_button
 
       def xpath
@@ -167,10 +239,13 @@ module Capybara
     end
 
     class LinkSelector < Base
+      include FilterByVisibility
+      include FilterByText
+
       self.name = :link
 
       def xpath
-        XPath::HTML.link(locator, xpath_options)
+        XPath::HTML.link(locator, options)
       end
 
       def failure_message(node)
@@ -179,6 +254,10 @@ module Capybara
     end
 
     class ButtonSelector < Base
+      include FilterByVisibility
+      include FilterByText
+      include FilterByValue
+
       self.name = :button
 
       def xpath
@@ -191,10 +270,13 @@ module Capybara
     end
 
     class FillableFieldSelector < Base
+      include FilterByVisibility
+      include FilterByValue
+
       self.name = :fillable_field
 
       def xpath
-        XPath::HTML.fillable_field(locator, xpath_options)
+        XPath::HTML.fillable_field(locator, options)
       end
 
       def failure_message(node)
@@ -203,10 +285,13 @@ module Capybara
     end
 
     class RadioButtonSelector < Base
+      include FilterByVisibility
+      include FilterByValue
+
       self.name = :radio_button
 
       def xpath
-        XPath::HTML.radio_button(locator, xpath_options)
+        XPath::HTML.radio_button(locator, options)
       end
 
       def failure_message(node)
@@ -215,10 +300,15 @@ module Capybara
     end
 
     class CheckboxSelector < Base
+      include FilterByVisibility
+      include FilterByValue
+      include FilterByChecked
+      include FilterByUnchecked
+
       self.name = :checkbox
 
       def xpath
-        XPath::HTML.checkbox(locator, xpath_options)
+        XPath::HTML.checkbox(locator, options)
       end
 
       def failure_message(node)
@@ -227,10 +317,13 @@ module Capybara
     end
 
     class SelectSelector < Base
+      include FilterByVisibility
+      include FilterBySelected
+
       self.name = :select
 
       def xpath
-        XPath::HTML.select(locator, xpath_options)
+        XPath::HTML.select(locator, options)
       end
 
       def failure_message(node)
@@ -239,6 +332,9 @@ module Capybara
     end
 
     class OptionSelector < Base
+      include FilterByVisibility
+      include FilterByValue
+
       self.name = :option
 
       def xpath
@@ -253,10 +349,12 @@ module Capybara
     end
 
     class FileFieldSelector < Base
+      include FilterByVisibility
+
       self.name = :file_field
 
       def xpath
-        XPath::HTML.file_field(locator, xpath_options)
+        XPath::HTML.file_field(locator, options)
       end
 
       def failure_message(node)
@@ -273,10 +371,12 @@ module Capybara
     end
 
     class TableSelector < Base
+      include FilterByVisibility
+
       self.name = :table
 
       def xpath
-        XPath::HTML.table(locator, xpath_options)
+        XPath::HTML.table(locator, options)
       end
     end
   end
