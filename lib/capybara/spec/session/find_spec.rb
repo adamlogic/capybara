@@ -62,51 +62,6 @@ shared_examples_for "find" do
       end
     end
 
-    context "with custom selector" do
-      it "should use the custom selector" do
-        Capybara.add_selector(:monkey) do
-          xpath { |name| ".//*[@id='#{name}_monkey']" }
-        end
-        @session.find(:monkey, 'john').text.should == 'Monkey John'
-        @session.find(:monkey, 'paul').text.should == 'Monkey Paul'
-      end
-    end
-
-    context "with custom selector with :for option" do
-      it "should use the selector when it matches the :for option" do
-        Capybara.add_selector(:monkey) do
-          xpath { |num| ".//*[contains(@id, 'monkey')][#{num}]" }
-          match { |value| value.is_a?(Fixnum) }
-        end
-        @session.find(:monkey, '2').text.should == 'Monkey Paul'
-        @session.find(1).text.should == 'Monkey John'
-        @session.find(2).text.should == 'Monkey Paul'
-        @session.find('//h1').text.should == 'This is a test'
-      end
-    end
-
-    context "with custom selector with failure_message option" do
-      it "should raise an error with the failure message if the element is not found" do
-        Capybara.add_selector(:monkey) do
-          xpath { |num| ".//*[contains(@id, 'monkey')][#{num}]" }
-          failure_message { |node, selector| node.all(".//*[contains(@id, 'monkey')]").map { |node| node.text }.sort.join(', ') }
-        end
-        running do
-          @session.find(:monkey, '14').text.should == 'Monkey Paul'
-        end.should raise_error(Capybara::ElementNotFound, "Monkey John, Monkey Paul")
-      end
-
-      it "should pass the selector as the second argument" do
-        Capybara.add_selector(:monkey) do
-          xpath { |num| ".//*[contains(@id, 'monkey')][#{num}]" }
-          failure_message { |node, selector| selector.name.to_s + ': ' + selector.locator + ' - ' + node.all(".//*[contains(@id, 'monkey')]").map { |node| node.text }.sort.join(', ') }
-        end
-        running do
-          @session.find(:monkey, '14').text.should == 'Monkey Paul'
-        end.should raise_error(Capybara::ElementNotFound, "monkey: 14 - Monkey John, Monkey Paul")
-      end
-    end
-
     context "with css as default selector" do
       before { Capybara.default_selector = :css }
       it "should find the first element using the given locator" do

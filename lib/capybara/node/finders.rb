@@ -147,10 +147,10 @@ module Capybara
     protected
 
       def raise_find_error(*args)
-        options = extract_normalized_options(args)
-        normalized = Capybara::Selector.normalize(*args)
-        message = options[:message] || "Unable to find #{normalized.name} #{normalized.locator.inspect}"
-        message = normalized.failure_message.call(self, normalized) if normalized.failure_message
+        options  = if args.last.is_a?(Hash) then args.last else {} end
+        selector = Capybara::Selector.normalize(*args)
+        message  = options[:message] || selector.failure_message(self)
+
         raise Capybara::ElementNotFound, message
       end
 
