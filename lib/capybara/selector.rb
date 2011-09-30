@@ -2,14 +2,18 @@ module Capybara
   class Selector
     PROPERTY_OPTION_KEYS = [:text, :visible, :with, :checked, :unchecked, :selected]
 
-    attr_reader :name
+    attr_reader :name, :filters
 
     class Normalized
       attr_accessor :selector, :locator, :options, :xpath_options, :property_options, :xpaths
 
       def failure_message; selector.failure_message; end
-      def filter(node); selector.filter ? selector.filter.call(node, property_options) : true; end
       def name; selector.name; end
+
+      def filter(node)
+        selector.filters.empty? ||
+          selector.filters.all? { |f| f.call(node, property_options) }
+      end
     end
 
     class << self
@@ -62,13 +66,16 @@ module Capybara
     end
 
     def initialize(name, options = {}, &block)
-      @name = name
+      @name    = name
+      @filters = []
+
       if options[:inherit]
-        parent = Capybara::Selector.all[options[:inherit]]
-        @xpath = parent.xpath
+        parent           = Capybara::Selector.all[options[:inherit]]
+        @xpath           = parent.xpath
         @failure_message = parent.failure_message
-        @filter = parent.filter
+        @filters        += parent.filters
       end
+
       instance_eval(&block)
     end
 
@@ -88,8 +95,7 @@ module Capybara
     end
 
     def filter(&block)
-      @filter = block if block
-      @filter
+      @filters << block
     end
 
     def call(locator, xpath_options={})
@@ -115,10 +121,6 @@ Capybara.add_selector(:xpath) do
     result = true
     result = false if property_options[:text]      and not node.text.match(property_options[:text])
     result = false if property_options[:visible]   and not node.visible?
-    result = false if property_options[:with]      and not node.value == property_options[:with]
-    result = false if property_options[:checked]   and not node.checked?
-    result = false if property_options[:unchecked] and node.checked?
-    result = false if property_options[:selected]  and not has_selected_options?(node, property_options[:selected])
     result
   end
 end
@@ -134,13 +136,21 @@ end
 
 Capybara.add_selector(:field, :inherit => :xpath) do
   xpath { |locator| XPath::HTML.field(locator) }
+  filter do |node, property_options|
+    result = true
+    result = false if property_options[:with]      and not node.value == property_options[:with]
+    result = false if property_options[:checked]   and not node.checked?
+    result = false if property_options[:unchecked] and node.checked?
+    result = false if property_options[:selected]  and not has_selected_options?(node, property_options[:selected])
+    result
+  end
 end
 
 Capybara.add_selector(:fieldset, :inherit => :xpath) do
   xpath { |locator| XPath::HTML.fieldset(locator) }
 end
 
-Capybara.add_selector(:link_or_button, :inherit => :xpath) do
+Capybara.add_selector(:link_or_button, :inherit => :field) do
   xpath { |locator| XPath::HTML.link_or_button(locator) }
   failure_message { |node, selector| "no link or button '#{selector.locator}' found" }
 end
@@ -150,32 +160,32 @@ Capybara.add_selector(:link, :inherit => :xpath) do
   failure_message { |node, selector| "no link with title, id or text '#{selector.locator}' found" }
 end
 
-Capybara.add_selector(:button, :inherit => :xpath) do
+Capybara.add_selector(:button, :inherit => :field) do
   xpath { |locator| XPath::HTML.button(locator) }
   failure_message { |node, selector| "no button with value or id or text '#{selector.locator}' found" }
 end
 
-Capybara.add_selector(:fillable_field, :inherit => :xpath) do
+Capybara.add_selector(:fillable_field, :inherit => :field) do
   xpath { |locator, xpath_options| XPath::HTML.fillable_field(locator, xpath_options) }
   failure_message { |node, selector| "no text field, text area or password field with id, name, or label '#{selector.locator}' found" }
 end
 
-Capybara.add_selector(:radio_button, :inherit => :xpath) do
+Capybara.add_selector(:radio_button, :inherit => :field) do
   xpath { |locator, xpath_options| XPath::HTML.radio_button(locator, xpath_options) }
   failure_message { |node, selector| "no radio button with id, name, or label '#{selector.locator}' found" }
 end
 
-Capybara.add_selector(:checkbox, :inherit => :xpath) do
+Capybara.add_selector(:checkbox, :inherit => :field) do
   xpath { |locator, xpath_options| XPath::HTML.checkbox(locator, xpath_options) }
   failure_message { |node, selector| "no checkbox with id, name, or label '#{selector.locator}' found" }
 end
 
-Capybara.add_selector(:select, :inherit => :xpath) do
+Capybara.add_selector(:select, :inherit => :field) do
   xpath { |locator, xpath_options| XPath::HTML.select(locator, xpath_options) }
   failure_message { |node, selector| "no select box with id, name, or label '#{selector.locator}' found" }
 end
 
-Capybara.add_selector(:option, :inherit => :xpath) do
+Capybara.add_selector(:option, :inherit => :field) do
   xpath { |locator| XPath::HTML.option(locator) }
   failure_message do |node, selector|
     "no option with text '#{selector.locator}'".tap do |message|
@@ -184,12 +194,12 @@ Capybara.add_selector(:option, :inherit => :xpath) do
   end
 end
 
-Capybara.add_selector(:file_field, :inherit => :xpath) do
+Capybara.add_selector(:file_field, :inherit => :field) do
   xpath { |locator, xpath_options| XPath::HTML.file_field(locator, xpath_options) }
   failure_message { |node, selector| "no file field with id, name, or label '#{selector.locator}' found" }
 end
 
-Capybara.add_selector(:content, :inherit => :xpath) do
+Capybara.add_selector(:content) do
   xpath { |content| XPath::HTML.content(content) }
 end
 
