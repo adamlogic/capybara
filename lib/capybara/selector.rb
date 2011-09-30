@@ -1,18 +1,24 @@
 module Capybara
   class Selector
-    PROPERTY_OPTION_KEYS = [:text, :visible, :with, :checked, :unchecked, :selected]
-
-    attr_reader :name, :filters
+    attr_reader :name, :filters, :filter_option_keys
 
     class Normalized
-      attr_accessor :selector, :locator, :options, :xpath_options, :property_options, :xpaths
+      attr_accessor :selector, :locator, :xpath_options, :filter_options, :xpaths
 
       def failure_message; selector.failure_message; end
       def name; selector.name; end
 
       def filter(node)
         selector.filters.empty? ||
-          selector.filters.all? { |f| f.call(node, property_options) }
+          selector.filters.all? { |f| f.call(node, filter_options) }
+      end
+
+      def options=(options)
+        self.xpath_options    = options.dup
+        self.filter_options = selector.filter_option_keys.inject({}) do |opts, key|
+          opts[key] = xpath_options.delete(key) if xpath_options[key]
+          opts
+        end
       end
     end
 
@@ -31,8 +37,7 @@ module Capybara
 
       def normalize(*args)
         normalized = Normalized.new
-        normalized.options = if args.last.is_a?(Hash) then args.pop else {} end
-        normalized.xpath_options, normalized.property_options = split_options(normalized.options)
+        options    = if args.last.is_a?(Hash) then args.pop else {} end
 
         if args[1]
           normalized.selector = all[args[0]]
@@ -41,7 +46,9 @@ module Capybara
           normalized.selector = all.values.find { |s| s.match?(args[0]) }
           normalized.locator = args[0]
         end
+
         normalized.selector ||= all[Capybara.default_selector]
+        normalized.options    = options
 
         xpath = normalized.selector.call(normalized.locator, normalized.xpath_options)
         if xpath.respond_to?(:to_xpaths)
@@ -51,29 +58,19 @@ module Capybara
         end
         normalized
       end
-
-      private
-
-      def split_options(options)
-        xpath_options = options.dup
-        property_options = PROPERTY_OPTION_KEYS.inject({}) do |opts, key|
-          opts[key] = xpath_options.delete(key) if xpath_options[key]
-          opts
-        end
-
-        [ xpath_options, property_options ]
-      end
     end
 
     def initialize(name, options = {}, &block)
-      @name    = name
-      @filters = []
+      @name               = name
+      @filters            = []
+      @filter_option_keys = []
 
       if options[:inherit]
-        parent           = Capybara::Selector.all[options[:inherit]]
-        @xpath           = parent.xpath
-        @failure_message = parent.failure_message
-        @filters        += parent.filters
+        parent              =  Capybara::Selector.all[options[:inherit]]
+        @xpath              =  parent.xpath
+        @failure_message    =  parent.failure_message
+        @filters            += parent.filters
+        @filter_option_keys += parent.filter_option_keys
       end
 
       instance_eval(&block)
@@ -98,6 +95,10 @@ module Capybara
       @filters << block
     end
 
+    def filter_options(*opts)
+      @filter_option_keys += opts
+    end
+
     def call(locator, xpath_options={})
       @xpath.call(locator, xpath_options)
     end
@@ -117,10 +118,11 @@ end
 
 Capybara.add_selector(:xpath) do
   xpath { |xpath| xpath }
-  filter do |node, property_options|
+  filter_options :text, :visible
+  filter do |node, filter_options|
     result = true
-    result = false if property_options[:text]      and not node.text.match(property_options[:text])
-    result = false if property_options[:visible]   and not node.visible?
+    result = false if filter_options[:text]      and not node.text.match(filter_options[:text])
+    result = false if filter_options[:visible]   and not node.visible?
     result
   end
 end
@@ -136,12 +138,13 @@ end
 
 Capybara.add_selector(:field, :inherit => :xpath) do
   xpath { |locator| XPath::HTML.field(locator) }
-  filter do |node, property_options|
+  filter_options :with, :checked, :unchecked, :selected
+  filter do |node, filter_options|
     result = true
-    result = false if property_options[:with]      and not node.value == property_options[:with]
-    result = false if property_options[:checked]   and not node.checked?
-    result = false if property_options[:unchecked] and node.checked?
-    result = false if property_options[:selected]  and not has_selected_options?(node, property_options[:selected])
+    result = false if filter_options[:with]      and not node.value == filter_options[:with]
+    result = false if filter_options[:checked]   and not node.checked?
+    result = false if filter_options[:unchecked] and node.checked?
+    result = false if filter_options[:selected]  and not has_selected_options?(node, filter_options[:selected])
     result
   end
 end
