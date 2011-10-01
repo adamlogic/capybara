@@ -168,6 +168,16 @@ describe Capybara::RSpecMatchers do
             "<h1>Text</h1>".should have_selector('//h2')
           end.to raise_error(%r(Unable to find xpath "//h2"))
         end
+
+        it "fails with the selector's failure_message if set" do
+          Capybara.add_selector(:monkey) do
+            xpath { |num| ".//*[contains(@id, 'monkey')][#{num}]" }
+            failure_message { |node, selector| node.all(".//*[contains(@id, 'monkey')]").map { |node| node.text }.sort.join(', ') }
+          end
+          expect do
+            '<h1 id="monkey_paul">Monkey John</h1>'.should have_selector(:monkey, 14)
+          end.to raise_error("Monkey John")
+        end
       end
 
       context "with should_not" do
@@ -203,6 +213,16 @@ describe Capybara::RSpecMatchers do
           expect do
             page.should have_selector("//h1", :text => 'wrong text')
           end.to raise_error(%r(Unable to find xpath "//h1"))
+        end
+
+        it "fails with the selector's failure_message if set" do
+          Capybara.add_selector(:monkey) do
+            xpath { |num| ".//*[contains(@id, 'monkey')][#{num}]" }
+            failure_message { |node, selector| node.all(".//*[contains(@id, 'monkey')]").map { |node| node.text }.sort.join(', ') }
+          end
+          expect do
+            page.should have_selector(:monkey, 14)
+          end.to raise_error("Monkey John, Monkey Paul")
         end
       end
 

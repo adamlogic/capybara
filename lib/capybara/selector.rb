@@ -29,6 +29,26 @@ module Capybara
       end
     end
 
+    class DSL
+      def xpath(&block);           block ? @xpath = block           : @xpath;           end
+      def match(&block);           block ? @match = block           : @match;           end
+      def failure_message(&block); block ? @failure_message = block : @failure_message; end
+
+      def self.evaluate(name, &block)
+        dsl = new
+        dsl.instance_eval(&block)
+
+        Class.new(Base) do
+          self.name = name
+          define_method(:xpath) { dsl.xpath.call(locator) } if dsl.xpath
+          define_method(:failure_message) { |node| dsl.failure_message.call(node, self) } if dsl.failure_message
+
+          @@match = dsl.match # hold onto this since the "class << self" block changes local variable scope
+          class << self; define_method(:match?, &@@match) if @@match; end
+        end
+      end
+    end
+
     class Base
       attr_accessor :locator, :options, :xpath_options, :property_options
 

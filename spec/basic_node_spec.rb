@@ -28,6 +28,16 @@ describe Capybara do
       string.should_not have_css('#does-not-exist')
     end
 
+    it "allows using custom matchers" do
+      Capybara.add_selector :lifeform do
+        xpath { |name| "//option[contains(.,'#{name}')]" }
+      end
+      string.should have_selector(:page)
+      string.should_not have_selector(:'does-not-exist')
+      string.should have_selector(:lifeform, "Monkey")
+      string.should_not have_selector(:lifeform, "Gorilla")
+    end
+
     it "allows using matchers with text option" do
       string.should have_css('h1', :text => 'Awesome')
       string.should_not have_css('h1', :text => 'Not so awesome')
